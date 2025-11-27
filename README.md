@@ -1,50 +1,19 @@
-# Welcome to your Expo app 👋
+# 📱 Aplicación de Gestión de Eventos Comunitarios
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+## 👥 Integrantes del Equipo
+* **[Rolando Giovanni Guevara Martir GM202436]**
+* **[Ronald Vladimir Urias Orellana RO230537]** 
 
-## Get started
+## 🔗 Enlaces de Gestión
+* **Tablero de Trello:** https://trello.com/b/IodGEvoq/tarea-dps-proyecto-2-gm202436
+* **Diseños UX/UI (Figma):** Ver carpeta `/assets/design` en este repositorio.
 
-1. Install dependencies
+## 🎨 Mockups del Proyecto
+Aquí presentamos la propuesta visual de la aplicación:
 
-   ```bash
-   npm install
-   ```
+![Login](assets/design/LOGIN.png)
+![Feed de Eventos](assets/design/FEED.png)
+![Detalle Evento](assets/design/CONFIRMARASISTENCIA.png)
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## 📄 Licencia
+Este proyecto utiliza la licencia **Creative Commons Attribution 4.0 International (CC BY 4.0)**.
