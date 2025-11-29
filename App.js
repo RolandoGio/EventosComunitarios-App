@@ -1,4 +1,5 @@
 import { AntDesign, Feather, Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,45 +19,81 @@ import {
 } from 'firebase/auth';
 import { auth } from './firebaseConfig';
 
+// DATOS INICIALES (AHORA CON HORA Y LISTAS)
+const INITIAL_EVENTS = [
+    { 
+        id: '1', title: 'Taller de React Native', date: '20/11/2024', time: '10:00 AM', location: 'Aula Magna', 
+        image: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=800&q=80',
+        likedBy: [], attendingList: ['test@test.com', 'juan@gmail.com'] // Simulamos 2 asistentes
+    },
+    { 
+        id: '2', title: 'Hackathon 2024', date: '29/11/2024', time: '08:00 AM', location: 'Lab de Computo', 
+        image: 'https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=800&q=80',
+        likedBy: [], attendingList: ['pepe@gmail.com']
+    },
+    { 
+        id: '3', title: 'Fiesta de Fin de Año', date: '31/12/2024', time: '08:00 PM', location: 'Terraza Principal', 
+        image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80',
+        likedBy: [], attendingList: []
+    },
+];
+
 // --- COMPONENTE: TARJETA DE EVENTO ---
-const EventCard = ({ item, onPress }) => {
-    const [liked, setLiked] = useState(false);
-    const [likeCount, setLikeCount] = useState(item.likes || 0);
+const EventCard = ({ item, onPress, onToggleLike, currentUserEmail }) => {
+    const isLikedByMe = item.likedBy.includes(currentUserEmail);
+    const isAttending = item.attendingList.includes(currentUserEmail);
+    const totalLikes = item.likedBy.length;
+    const totalAttendees = item.attendingList.length; // <--- CONTADOR DE ASISTENTES
 
     return (
         <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
             <LinearGradient colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.02)']} style={styles.card}>
                 <Image source={{ uri: item.image }} style={styles.cardImage} />
+                
                 <View style={styles.cardInfo}>
-                    {item.attending && (
+                    {isAttending && (
                         <View style={styles.attendingBadge}>
-                            <Text style={styles.attendingText}>ASISTENCIA CONFIRMADA</Text>
+                            <Text style={styles.attendingText}>ASISTIRÉ ✅</Text>
                         </View>
                     )}
+
                     <Text style={styles.cardTitle}>{item.title}</Text>
-                    <View style={styles.row}><Ionicons name="calendar-outline" size={14} color="#ccc" /><Text style={styles.cardMeta}>{item.date}</Text></View>
-                    <View style={styles.row}><Ionicons name="location-outline" size={14} color="#ccc" /><Text style={styles.cardMeta}>{item.location}</Text></View>
+                    
+                    {/* FECHA Y HORA */}
+                    <View style={styles.row}>
+                        <Ionicons name="calendar-outline" size={14} color="#ccc" />
+                        <Text style={styles.cardMeta}>{item.date} • {item.time}</Text>
+                    </View>
+                    
+                    <View style={styles.row}>
+                        <Ionicons name="location-outline" size={14} color="#ccc" />
+                        <Text style={styles.cardMeta}>{item.location}</Text>
+                    </View>
+
+                    {/* CONTADOR DE ASISTENTES (NUEVO) */}
+                    <View style={[styles.row, {marginTop: 5}]}>
+                        <Ionicons name="people-outline" size={14} color="#10B981" />
+                        <Text style={[styles.cardMeta, {color:'#10B981'}]}>{totalAttendees} Asistentes</Text>
+                    </View>
                 </View>
-                <TouchableOpacity style={styles.likeContainer} onPress={() => { setLiked(!liked); setLikeCount(liked ? likeCount - 1 : likeCount + 1); }}>
-                    <Ionicons name={liked ? "heart" : "heart-outline"} size={22} color={liked ? "#FF3B30" : "#fff"} />
-                    <Text style={styles.likeCount}>{likeCount}</Text>
+                
+                <TouchableOpacity style={styles.likeContainer} onPress={() => onToggleLike(item.id)}>
+                    <Ionicons name={isLikedByMe ? "heart" : "heart-outline"} size={22} color={isLikedByMe ? "#FF3B30" : "#fff"} />
+                    <Text style={styles.likeCount}>{totalLikes}</Text>
                 </TouchableOpacity>
             </LinearGradient>
         </TouchableOpacity>
     );
 };
 
-// --- PANTALLA 5: PERFIL (HISTORIAL Y ESTADÍSTICAS) ---
-const ProfileScreen = ({ user, events, onBack, onLogout }) => {
-    // Calcular Estadísticas Reales
-    const attendingCount = events.filter(e => e.attending).length;
-    const historyList = events.filter(e => e.attending);
+// --- PANTALLA: PERFIL ---
+const ProfileScreen = ({ user, events, onBack, onLogout, onResetData }) => {
+    const myHistory = events.filter(e => e.attendingList.includes(user.email));
 
     return (
         <View style={styles.container}>
             <View style={styles.backgroundDark} />
             <View style={[styles.blob, styles.blobGreen]} />
-            
             <View style={styles.contentContainer}>
                 <View style={styles.header}>
                     <TouchableOpacity onPress={onBack}><Ionicons name="arrow-back" size={24} color="white" /></TouchableOpacity>
@@ -64,52 +101,43 @@ const ProfileScreen = ({ user, events, onBack, onLogout }) => {
                     <TouchableOpacity onPress={onLogout}><AntDesign name="logout" size={20} color="#FF4444" /></TouchableOpacity>
                 </View>
 
-                {/* INFO USUARIO */}
                 <View style={{alignItems:'center', marginBottom: 20}}>
-                    <View style={styles.profileAvatar}>
-                        <Text style={{fontSize: 30}}>👤</Text>
-                    </View>
+                    <View style={styles.profileAvatar}><Text style={{fontSize: 30}}>👤</Text></View>
                     <Text style={styles.profileEmail}>{user.email}</Text>
-                    <Text style={{color:'#10B981'}}>Usuario Verificado</Text>
                 </View>
 
-                {/* ESTADÍSTICAS (REQ. 4) */}
                 <View style={styles.statsRow}>
                     <LinearGradient colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.05)']} style={styles.statBox}>
-                        <Text style={styles.statNumber}>{events.length}</Text>
-                        <Text style={styles.statLabel}>Eventos</Text>
+                        <Text style={styles.statNumber}>{events.length}</Text><Text style={styles.statLabel}>Total Eventos</Text>
                     </LinearGradient>
                     <LinearGradient colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.05)']} style={styles.statBox}>
-                        <Text style={styles.statNumber}>{attendingCount}</Text>
-                        <Text style={styles.statLabel}>Asistencias</Text>
-                    </LinearGradient>
-                    <LinearGradient colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.05)']} style={styles.statBox}>
-                        <Text style={styles.statNumber}>100%</Text>
-                        <Text style={styles.statLabel}>Nivel</Text>
+                        <Text style={styles.statNumber}>{myHistory.length}</Text><Text style={styles.statLabel}>Mis Asistencias</Text>
                     </LinearGradient>
                 </View>
 
-                {/* HISTORIAL (REQ. 4) */}
                 <Text style={styles.sectionTitle}>Historial de Asistencia</Text>
                 <FlatList 
-                    data={historyList}
+                    data={myHistory}
                     keyExtractor={item => item.id}
-                    ListEmptyComponent={<Text style={{color:'#aaa', fontStyle:'italic'}}>No has confirmado asistencia a ningún evento aún.</Text>}
+                    ListEmptyComponent={<Text style={{color:'#aaa', fontStyle:'italic'}}>No has confirmado asistencia a nada.</Text>}
                     renderItem={({item}) => (
                         <View style={styles.historyItem}>
                             <Ionicons name="checkmark-circle" size={20} color="#10B981" style={{marginRight:10}} />
                             <View>
                                 <Text style={{color:'white', fontWeight:'bold'}}>{item.title}</Text>
-                                <Text style={{color:'#aaa', fontSize:12}}>{item.date}</Text>
+                                <Text style={{color:'#aaa', fontSize:12}}>{item.date} • {item.time}</Text>
                             </View>
                         </View>
                     )}
                 />
 
-                {/* LICENCIA CC (REQ. LICENCIAS) */}
-                <View style={{marginTop: 20, alignItems:'center', padding: 20}}>
-                    <Text style={{color:'rgba(255,255,255,0.3)', fontSize: 12}}>App bajo Licencia Creative Commons</Text>
-                    <Text style={{color:'rgba(255,255,255,0.3)', fontSize: 12, fontWeight:'bold'}}>CC BY-NC 4.0 International</Text>
+                <TouchableOpacity style={styles.resetBtn} onPress={onResetData}>
+                    <Ionicons name="trash-outline" size={18} color="white" style={{marginRight: 5}}/>
+                    <Text style={{color:'white', fontWeight:'bold'}}>Restablecer Datos Globales</Text>
+                </TouchableOpacity>
+
+                <View style={{marginTop: 10, alignItems:'center'}}>
+                    <Text style={{color:'rgba(255,255,255,0.3)', fontSize: 10}}>Licencia CC BY-NC 4.0</Text>
                 </View>
             </View>
         </View>
@@ -117,8 +145,8 @@ const ProfileScreen = ({ user, events, onBack, onLogout }) => {
 };
 
 // --- PANTALLA: DETALLE ---
-const DetailScreen = ({ event, onBack, onToggleRSVP }) => {
-    const isAttending = event.attending;
+const DetailScreen = ({ event, userEmail, onBack, onToggleRSVP }) => {
+    const isAttending = event.attendingList.includes(userEmail);
     const handleConfirm = () => {
         onToggleRSVP(event.id);
         if (!isAttending) Alert.alert("Registrado", "Tu asistencia ha sido confirmada.");
@@ -129,14 +157,16 @@ const DetailScreen = ({ event, onBack, onToggleRSVP }) => {
             <View style={styles.backgroundDark} />
             <View style={[styles.blob, styles.blobGreen]} />
             <LinearGradient colors={['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.02)']} style={styles.detailCard}>
-                <View style={{width:'100%', alignItems:'flex-start'}}>
-                    <TouchableOpacity onPress={onBack} style={styles.backBtn}><Ionicons name="arrow-back" size={28} color="white" /></TouchableOpacity>
-                </View>
+                <TouchableOpacity onPress={onBack} style={styles.backBtn}><Ionicons name="arrow-back" size={28} color="white" /></TouchableOpacity>
                 <Image source={{ uri: event.image }} style={styles.detailImage} />
                 <Text style={styles.detailTitle}>{event.title}</Text>
                 <View style={styles.detailRow}><Ionicons name="calendar" size={20} color="#10B981" /><Text style={styles.detailText}>{event.date}</Text></View>
+                <View style={styles.detailRow}><Ionicons name="time" size={20} color="#10B981" /><Text style={styles.detailText}>{event.time}</Text></View>
                 <View style={styles.detailRow}><Ionicons name="location" size={20} color="#10B981" /><Text style={styles.detailText}>{event.location}</Text></View>
-                <View style={styles.descContainer}><Text style={styles.descLabel}>Descripción</Text><Text style={styles.descText}>{event.description || "Detalles del evento próximamente."}</Text></View>
+                <View style={styles.detailRow}><Ionicons name="people" size={20} color="#10B981" /><Text style={styles.detailText}>{event.attendingList.length} Personas asistirán</Text></View>
+                
+                <View style={styles.descContainer}><Text style={styles.descLabel}>Descripción</Text><Text style={styles.descText}>{event.description || "Detalles del evento."}</Text></View>
+                
                 <TouchableOpacity style={[styles.rsvpBtn, isAttending && styles.rsvpBtnActive]} onPress={handleConfirm}>
                     <Ionicons name={isAttending ? "close-circle-outline" : "checkmark-circle-outline"} size={24} color="white" style={{marginRight: 10}}/>
                     <Text style={styles.loginText}>{isAttending ? "Cancelar Asistencia" : "Confirmar Asistencia"}</Text>
@@ -146,32 +176,50 @@ const DetailScreen = ({ event, onBack, onToggleRSVP }) => {
     );
 };
 
-// --- PANTALLA: CREAR EVENTO ---
+// --- PANTALLA: CREAR EVENTO (CON HORA) ---
 const CreateScreen = ({ onBack, onCreate }) => {
     const [title, setTitle] = useState('');
     const [location, setLocation] = useState('');
     const [desc, setDesc] = useState('');
     const [imageUri, setImageUri] = useState(null);
+    
+    // FECHA Y HORA
     const [date, setDate] = useState(new Date());
+    const [time, setTime] = useState(new Date());
     const [webDateText, setWebDateText] = useState(''); 
-    const [showPicker, setShowPicker] = useState(false);
+    const [webTimeText, setWebTimeText] = useState(''); 
+    
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [showTimePicker, setShowTimePicker] = useState(false);
 
     const pickImage = async () => {
         let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [4, 3], quality: 1 });
         if (!result.canceled) setImageUri(result.assets[0].uri);
     };
-    const onChangeDate = (event, selectedDate) => { const currentDate = selectedDate || date; setShowPicker(Platform.OS === 'ios'); setDate(currentDate); };
-    const formatDate = (dateObj) => { const d = new Date(dateObj); const userTimezoneOffset = d.getTimezoneOffset() * 60000; const adjustedDate = new Date(d.getTime() + userTimezoneOffset); return `${adjustedDate.getDate()}/${adjustedDate.getMonth() + 1}/${adjustedDate.getFullYear()}`; };
+
+    const formatDate = (d) => `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+    const formatTime = (t) => t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
     const handlePublish = () => {
         const finalDate = Platform.OS === 'web' ? (webDateText || formatDate(new Date())) : formatDate(date);
+        const finalTime = Platform.OS === 'web' ? (webTimeText || formatTime(new Date())) : formatTime(time);
+
         if(!title || !location) { Alert.alert("Faltan datos", "Llena los campos principales."); return; }
+        
         const newEvent = {
-            id: Date.now().toString(), title, date: finalDate, location, description: desc, likes: 0, attending: false,
+            id: Date.now().toString(), 
+            title, 
+            date: finalDate, 
+            time: finalTime,
+            location, description: desc, likedBy: [], attendingList: [],
             image: imageUri || 'https://images.unsplash.com/photo-1505373877841-8d25f7d46678?auto=format&fit=crop&w=800&q=80' 
         };
         onCreate(newEvent);
     };
-    const WebDatePicker = () => React.createElement('input', { type: 'date', value: date.toISOString().split('T')[0], onChange: (e) => setDate(new Date(e.target.value)), style: { width: '100%', height: 50, backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 15, padding: '0 15px', color: 'white', fontSize: 16, fontFamily: 'system-ui', colorScheme: 'dark', marginBottom: 15 } });
+    
+    // Inputs Web
+    const WebDatePicker = () => React.createElement('input', { type: 'date', onChange: (e) => setWebDateText(e.target.value), style: { width: '100%', height: 50, backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 15, padding: '0 15px', color: 'white', fontSize: 16, marginBottom: 15 } });
+    const WebTimePicker = () => React.createElement('input', { type: 'time', onChange: (e) => setWebTimeText(e.target.value), style: { width: '100%', height: 50, backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 15, padding: '0 15px', color: 'white', fontSize: 16, marginBottom: 15 } });
 
     return (
         <View style={styles.container}>
@@ -186,7 +234,29 @@ const CreateScreen = ({ onBack, onCreate }) => {
                     {imageUri ? <Image source={{ uri: imageUri }} style={{width: '100%', height: '100%', borderRadius: 20}} /> : <><Ionicons name="camera" size={40} color="rgba(255,255,255,0.5)" /><Text style={{color:'rgba(255,255,255,0.5)', marginTop: 5}}>Subir portada</Text></>}
                 </TouchableOpacity>
                 <TextInput style={styles.inputGlass} placeholder="Título del Evento" placeholderTextColor="#aaa" value={title} onChangeText={setTitle}/>
-                {Platform.OS === 'web' ? <WebDatePicker /> : <><TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.inputGlass, {justifyContent:'center'}]}><View style={{flexDirection:'row', alignItems:'center'}}><Ionicons name="calendar-outline" size={20} color="#aaa" style={{marginRight: 10}}/><Text style={{color: 'white', fontSize: 14}}>{formatDate(date)}</Text></View></TouchableOpacity>{showPicker && <DateTimePicker testID="dateTimePicker" value={date} mode="date" display="default" onChange={onChangeDate} themeVariant="dark" />}</>}
+                
+                {/* FECHA Y HORA */}
+                {Platform.OS === 'web' ? (
+                    <>
+                        <WebDatePicker />
+                        <WebTimePicker />
+                    </>
+                ) : (
+                    <>
+                        {/* Selector FECHA Movil */}
+                        <TouchableOpacity onPress={() => setShowDatePicker(true)} style={[styles.inputGlass, {justifyContent:'center'}]}>
+                            <View style={{flexDirection:'row', alignItems:'center'}}><Ionicons name="calendar-outline" size={20} color="#aaa" style={{marginRight: 10}}/><Text style={{color: 'white', fontSize: 14}}>{formatDate(date)}</Text></View>
+                        </TouchableOpacity>
+                        {showDatePicker && <DateTimePicker value={date} mode="date" display="default" onChange={(e, d) => { setShowDatePicker(Platform.OS==='ios'); if(d) setDate(d); }} themeVariant="dark" />}
+                        
+                        {/* Selector HORA Movil */}
+                        <TouchableOpacity onPress={() => setShowTimePicker(true)} style={[styles.inputGlass, {justifyContent:'center'}]}>
+                            <View style={{flexDirection:'row', alignItems:'center'}}><Ionicons name="time-outline" size={20} color="#aaa" style={{marginRight: 10}}/><Text style={{color: 'white', fontSize: 14}}>{formatTime(time)}</Text></View>
+                        </TouchableOpacity>
+                        {showTimePicker && <DateTimePicker value={time} mode="time" display="default" onChange={(e, d) => { setShowTimePicker(Platform.OS==='ios'); if(d) setTime(d); }} themeVariant="dark" />}
+                    </>
+                )}
+
                 <TextInput style={styles.inputGlass} placeholder="Ubicación" placeholderTextColor="#aaa" value={location} onChangeText={setLocation}/>
                 <TextInput style={[styles.inputGlass, {height: 80, paddingTop: 10}]} placeholder="Descripción" placeholderTextColor="#aaa" multiline value={desc} onChangeText={setDesc}/>
                 <TouchableOpacity style={styles.loginBtn} onPress={handlePublish}><Text style={styles.loginText}>Publicar Evento</Text></TouchableOpacity>
@@ -200,13 +270,72 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [view, setView] = useState('login'); 
   const [selectedEventId, setSelectedEventId] = useState(null);
-  
-  const [events, setEvents] = useState([
-    { id: '1', title: 'Taller de React Native', date: '20/11/2024', location: 'Aula Magna', likes: 24, attending: false, image: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=800&q=80' },
-    { id: '2', title: 'Hackathon 2024', date: '29/11/2024', location: 'Lab de Computo', likes: 156, attending: false, image: 'https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=800&q=80' },
-    { id: '3', title: 'Fiesta de Fin de Año', date: '31/12/2024', location: 'Terraza Principal', likes: 89, attending: false, image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80' },
-  ]);
+  const [events, setEvents] = useState([]);
 
+  // CARGAR DATOS
+  useEffect(() => {
+    const loadData = async () => {
+        try {
+            const savedEvents = await AsyncStorage.getItem('global_events_db');
+            if (savedEvents) {
+                setEvents(JSON.parse(savedEvents));
+            } else {
+                setEvents(INITIAL_EVENTS);
+            }
+        } catch (e) { console.log("Error cargando", e); }
+    };
+    loadData();
+  }, []);
+
+  const saveEventsToStorage = async (newEvents) => {
+      setEvents(newEvents);
+      try {
+          await AsyncStorage.setItem('global_events_db', JSON.stringify(newEvents));
+      } catch (e) { console.log("Error guardando", e); }
+  };
+
+  const toggleRSVP = (id) => {
+      if (!currentUser) return;
+      const userEmail = currentUser.email;
+      const updated = events.map(e => {
+          if (e.id === id) {
+              const alreadyAttending = e.attendingList.includes(userEmail);
+              let newList = alreadyAttending ? e.attendingList.filter(email => email !== userEmail) : [...e.attendingList, userEmail];
+              return { ...e, attendingList: newList };
+          }
+          return e;
+      });
+      saveEventsToStorage(updated);
+  };
+
+  const toggleLike = (id) => {
+      if (!currentUser) return;
+      const userEmail = currentUser.email;
+      const updated = events.map(e => {
+          if (e.id === id) {
+              const alreadyLiked = e.likedBy.includes(userEmail);
+              let newLikedBy = alreadyLiked ? e.likedBy.filter(email => email !== userEmail) : [...e.likedBy, userEmail];
+              return { ...e, likedBy: newLikedBy };
+          }
+          return e;
+      });
+      saveEventsToStorage(updated);
+  };
+
+  const handleCreateEvent = (newEvent) => {
+      const updated = [newEvent, ...events];
+      saveEventsToStorage(updated);
+      setView('feed');
+      Alert.alert("¡Éxito!", "Evento publicado globalmente.");
+  };
+
+  const handleResetData = async () => {
+      await AsyncStorage.removeItem('global_events_db');
+      setEvents(INITIAL_EVENTS);
+      Alert.alert("Reiniciado", "Base de datos local limpia.");
+  };
+
+  // --- AUTH ---
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -220,14 +349,6 @@ export default function App() {
     if (Platform.OS === 'web') getRedirectResult(auth).catch(console.log);
     return unsubscribe; 
   }, []);
-
-  const toggleRSVP = (id) => {
-      const updatedEvents = events.map(event => {
-          if (event.id === id) return { ...event, attending: !event.attending };
-          return event;
-      });
-      setEvents(updatedEvents);
-  };
 
   const handleEmailAuth = async () => {
     if (!email || !password) { Alert.alert("Error", "Faltan datos"); return; }
@@ -252,15 +373,14 @@ export default function App() {
   };
 
   const logout = async () => { await auth.signOut(); };
-  const handleCreateEvent = (newEvent) => { setEvents([newEvent, ...events]); setView('feed'); Alert.alert("¡Éxito!", "Evento publicado"); };
 
-  // --- NAVEGACIÓN ---
+  // --- RENDERIZADO ---
   if (view === 'create') return <CreateScreen onBack={() => setView('feed')} onCreate={handleCreateEvent} />;
   if (view === 'detail') {
       const eventToShow = events.find(e => e.id === selectedEventId);
-      return <DetailScreen event={eventToShow} onBack={() => setView('feed')} onToggleRSVP={toggleRSVP} />;
+      return <DetailScreen event={eventToShow} userEmail={currentUser.email} onBack={() => setView('feed')} onToggleRSVP={toggleRSVP} />;
   }
-  if (view === 'profile') return <ProfileScreen user={currentUser} events={events} onBack={() => setView('feed')} onLogout={logout} />; // NUEVA PANTALLA
+  if (view === 'profile') return <ProfileScreen user={currentUser} events={events} onBack={() => setView('feed')} onLogout={logout} onResetData={handleResetData} />;
 
   if (view === 'feed' && currentUser) {
       return (
@@ -269,14 +389,11 @@ export default function App() {
             <View style={[styles.blob, styles.blobGreen]} />
             <View style={styles.contentContainer}>
                 <View style={styles.header}>
-                    {/* AHORA AL TOCAR EL USUARIO VAS AL PERFIL */}
                     <TouchableOpacity onPress={() => setView('profile')}>
                         <Text style={{color:'#10B981'}}>Hola,</Text>
                         <Text style={styles.headerTitle}>{currentUser.email.split('@')[0]}</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setView('profile')} style={styles.avatar}>
-                        <AntDesign name="user" size={20} color="#fff" />
-                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setView('profile')} style={styles.avatar}><AntDesign name="user" size={20} color="#fff" /></TouchableOpacity>
                 </View>
                 <View style={styles.searchContainer}>
                     <Feather name="search" size={20} color="rgba(255,255,255,0.7)" style={{marginRight: 10}}/>
@@ -284,7 +401,7 @@ export default function App() {
                 </View>
                 <FlatList 
                     data={events} 
-                    renderItem={({ item }) => <EventCard item={item} onPress={() => { setSelectedEventId(item.id); setView('detail'); }} />} 
+                    renderItem={({ item }) => <EventCard item={item} onPress={() => { setSelectedEventId(item.id); setView('detail'); }} onToggleLike={toggleLike} currentUserEmail={currentUser.email} />} 
                     keyExtractor={item => item.id} 
                     contentContainerStyle={{ paddingBottom: 100 }} 
                 />
@@ -363,7 +480,6 @@ const styles = StyleSheet.create({
   inputGlass: { width: '100%', height: 50, backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 15, paddingHorizontal: 15, marginBottom: 15, color: '#fff', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   attendingBadge: { position: 'absolute', top: -10, right: -10, backgroundColor: '#10B981', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, zIndex: 10 },
   attendingText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
-  // PERFIL
   profileAvatar: { width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent:'center', alignItems:'center', marginBottom: 10 },
   profileEmail: { color: 'white', fontSize: 18, fontWeight: 'bold', marginBottom: 5 },
   statsRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 30 },
@@ -372,4 +488,5 @@ const styles = StyleSheet.create({
   statLabel: { color: '#ccc', fontSize: 12 },
   sectionTitle: { color: 'white', fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
   historyItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', padding: 15, borderRadius: 15, marginBottom: 10 },
+  resetBtn: { flexDirection:'row', marginTop: 20, padding: 15, backgroundColor: '#EF4444', borderRadius: 15, justifyContent: 'center', alignItems: 'center', ...Platform.select({ web: { cursor: 'pointer' } }) },
 });
